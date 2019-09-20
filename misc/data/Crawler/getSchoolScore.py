@@ -1,0 +1,146 @@
+#! /usr/bin/env python3
+
+import sys
+import json
+import urllib.request
+import urllib.parse
+
+provinceIDs = {'北京': 11,
+               '天津': 12,
+               '河北': 13,
+               '山西': 14,
+               '内蒙古': 15,
+               '辽宁': 21,
+               '吉林': 22,
+               '黑龙江': 23,
+               '上海': 31,
+               '江苏': 32,
+               '浙江': 33,
+               '安徽': 34,
+               '福建': 35,
+               '江西': 36,
+               '山东': 37,
+               '河南': 41,
+               '湖北': 42,
+               '湖南': 43,
+               '广东': 44,
+               '广西': 45,
+               '海南': 46,
+               '重庆': 50,
+               '四川': 51,
+               '贵州': 52,
+               '云南': 53,
+               '西藏': 54,
+               '陕西': 61,
+               '甘肃': 62,
+               '青海': 63,
+               '宁夏': 64,
+               '新疆': 65}
+
+
+class SchoolScoreCrawler:
+    """curl 'http://api.eol.cn/gkcx/api/?access_token=&
+    admissions=&
+    central=&
+    department=&
+    dual_class=&
+    f211=&
+    f985=&
+    is_dual_class=&
+    keyword=&
+    page=3&
+    province_id=&
+    request_type=1&
+    school_type=&
+    signsafe=&
+    size=20&
+    sort=view_total&
+    type=&
+    uri=apigkcx/api/school/hotlists' -H 'Accept: application/json, text/plain, */*' -H 'Referer: https://gkcx.eol.cn/school/search' -H 'Origin: https://gkcx.eol.cn' -H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.90 Safari/537.36' -H 'Content-Type: application/json;charset=UTF-8' --data-binary '{"access_token":"","admissions":"","central":"","department":"","dual_class":"","f211":"","f985":"","is_dual_class":"","keyword":"","page":3,"province_id":"","request_type":1,"school_type":"","size":20,"sort":"view_total","type":"","uri":"apigkcx/api/school/hotlists"}' --compressed"""
+
+    apiURL: str = 'http://api.eol.cn/gkcx/api/'
+
+    def getSchoolScoreList(self, page: int, size: int, year: int, provinceID: int):
+        args = {"access_token": "",
+                "admissions": "",
+                "central": "",
+                "department": "",
+                "dual_class": "",
+                "f211": "",
+                "f985": "",
+                "is_dual_class": "",
+                "keyword": "",
+                "local_batch_id": "",
+                "page": page,
+                "province_id": provinceID,
+                "school_type": "",
+                "size": size,
+                "type": "",
+                "uri": "apidata/api/gk/score/province",
+                "year": str(year)}
+
+        headers = {
+            'Accept': 'application/json, text/plain',
+            'Content-Type': 'application/json;charset=UTF-8',
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.90 Safari/537.36'
+        }
+
+        while True:
+            try:
+                req = urllib.request.Request(self.apiURL+'?'+urllib.parse.urlencode(
+                    args), data=json.dumps(args).encode('utf-8'), headers=headers)
+
+                resp = urllib.request.urlopen(req, timeout=10)
+
+            except Exception as e:
+                print(str(e) + ' on param (%d, %d, %d, %d)' %
+                      (page, size, year, provinceID))
+            else:
+                break
+
+        return json.loads(resp.read().decode('utf-8'))
+
+    def getFullSchoolScoreList(self, progressFunction=lambda year, province, num, total: None):
+        scoreList = []
+        try:
+            for year in range(2018, 2013, -1):
+                for province in provinceIDs:
+                    provinceid = provinceIDs[province]
+                    i, j = 1, 0
+                    while True:
+                        nowList = self.getSchoolScoreList(
+                            i, 100, year, provinceid)
+
+                        if nowList['code'] == '0000':
+
+                            if len(nowList['data']['item']) == 0:
+                                break
+
+                            scoreList += nowList['data']['item']
+                            j += len(nowList['data']['item'])
+                            progressFunction(year, provinceid,
+                                             j, nowList["data"]["numFound"])
+                        else:
+                            print(nowList)
+                            print("Assertion failed on %d,%d,%d" %
+                                  (year, provinceid, i))
+                        i += 1
+        except KeyboardInterrupt:
+            pass
+        return scoreList
+
+
+if __name__ == "__main__":
+    filename = 'scoreList.json' if len(sys.argv) != 2 else sys.argv[1]
+    crawler = SchoolScoreCrawler()
+
+    with open(filename) as input:
+        lst = json.load(input)
+
+    offset = len(lst)
+
+    lst += crawler.getFullSchoolScoreList(lambda year, province, num, total: print(
+        '%d %d %d: %d Done' % (year, province, num, total)))
+
+    with open(filename, 'w') as output:
+        json.dump(lst, output, ensure_ascii=False, indent=1)
